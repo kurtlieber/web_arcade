@@ -36,11 +36,65 @@
         let audioCtx;
         let ufoOsc = null;
         let ufoGain = null;
+        let marchInterval = null;
 
         function initAudio() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         }
 
+        // === MARCHING MUSIC (4-note tune) ===
+        function playMarchSound() {
+            initAudio();
+            
+            const notes = [120, 160, 200, 240]; // Classic 4-note march
+            let noteIndex = 0;
+
+            const playNote = () => {
+                if (gameState !== 'playing') return;
+
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = 'sawtooth';
+                osc.frequency.value = notes[noteIndex];
+                gain.gain.value = 0.12;
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+
+                gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+                osc.stop(audioCtx.currentTime + 0.1);
+
+                noteIndex = (noteIndex + 1) % 4;
+            };
+
+            // Play the 4-note sequence
+            playNote();
+            setTimeout(playNote, 90);
+            setTimeout(playNote, 180);
+            setTimeout(playNote, 270);
+        }
+
+        // === SHOOTING SOUND ===
+        function playShootSound() {
+            initAudio();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'square';
+            osc.frequency.value = 920;
+            gain.gain.value = 0.2;
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+
+            gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+            osc.stop(audioCtx.currentTime + 0.12);
+        }
+
+        // === UFO SOUND (already good) ===
         function playUfoSound() {
             initAudio();
             if (ufoOsc) ufoOsc.stop();
@@ -60,7 +114,6 @@
             ufoGain.connect(audioCtx.destination);
             ufoOsc.start();
 
-            // Classic warbling effect
             let baseFreq = 520;
             const interval = setInterval(() => {
                 if (!ufo || !ufoOsc) {
@@ -173,7 +226,6 @@
                 ctx.fillText('Press SPACE to start', 260, 300);
             } 
             else if (gameState === 'playing') {
-                // Top bar
                 ctx.fillStyle = '#0ff';
                 ctx.font = 'bold 16px monospace';
                 ctx.fillText('SCORE<1>', 60, 30);
@@ -183,27 +235,19 @@
                 ctx.fillStyle = '#fff';
                 ctx.fillText(score.toString().padStart(4, '0'), 80, 50);
 
-                // Bunkers
                 bunkers.forEach(drawBunker);
-
-                // Invaders
                 invaders.forEach(drawInvader);
-
-                // Player
                 drawPlayer();
 
-                // UFO
                 if (ufo) {
                     ctx.fillStyle = '#ff0';
                     ctx.fillRect(ufo.x, ufo.y, 50, 18);
                     ctx.fillRect(ufo.x + 10, ufo.y - 6, 30, 8);
                 }
 
-                // Bullets
                 ctx.fillStyle = '#fff';
                 bullets.forEach(b => ctx.fillRect(b.x, b.y, 3, 10));
 
-                // Lives
                 ctx.fillStyle = '#0ff';
                 ctx.font = 'bold 16px monospace';
                 ctx.fillText(lives, 40, 580);
@@ -213,22 +257,34 @@
         function update() {
             if (gameState !== 'playing') return;
 
-            // Invaders movement
             const now = Date.now();
+
+            // === INVADER MOVEMENT + MARCHING SOUND ===
             if (now - lastMove > 280) {
                 let hitWall = false;
+                const aliveCount = invaders.filter(i => i.alive).length;
+
                 invaders.forEach(inv => {
                     if (inv.alive) {
                         inv.x += dir * 8;
                         if (inv.x < 30 || inv.x > 720) hitWall = true;
                     }
                 });
+
                 if (hitWall) {
                     dir *= -1;
                     invaders.forEach(inv => { if (inv.alive) inv.y += 18; });
                 }
+
                 lastMove = now;
                 animFrame = 1 - animFrame;
+
+                // Play marching sound (speed increases as invaders die)
+                playMarchSound();
+                
+                // Make marching faster when fewer invaders remain
+                if (aliveCount < 20) lastMove = now - 80;
+                if (aliveCount < 10) lastMove = now - 150;
             }
 
             // UFO spawning
@@ -238,7 +294,6 @@
                 playUfoSound();
             }
 
-            // Move UFO
             if (ufo) {
                 ufo.x += 3.2;
                 if (ufo.x > 860) {
@@ -253,7 +308,7 @@
                 if (bullets[i].y < 0) bullets.splice(i, 1);
             }
 
-            // Collisions with invaders
+            // Collisions
             for (let i = 0; i < invaders.length; i++) {
                 const inv = invaders[i];
                 if (!inv.alive) continue;
@@ -269,7 +324,7 @@
                 }
             }
 
-            // UFO collision
+            // UFO hit
             if (ufo) {
                 for (let j = bullets.length - 1; j >= 0; j--) {
                     const b = bullets[j];
@@ -293,6 +348,7 @@
 
         function shoot() {
             bullets.push({ x: player.x + 18, y: player.y - 5 });
+            playShootSound();
         }
 
         document.addEventListener('keydown', e => {
