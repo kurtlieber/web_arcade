@@ -1,6 +1,6 @@
-# 🚀 SPACE INVADERS (1978 Faithful Recreation)
+# 🚀 SPACE INVADERS (1978 Recreation)
 
-A high-fidelity HTML5 recreation of the original **1978 Taito Space Invaders** arcade game.
+An HTML5 recreation of the original **1978 Taito Space Invaders** arcade game.
 
 ## Features
 - 55 invaders (5×11) with 3 types + 2-frame animation
