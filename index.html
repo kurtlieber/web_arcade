@@ -3,211 +3,110 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Space Invaders • Classic</title>
+    <title>SPACE INVADERS • 1978</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&amp;display=swap');
-        
-        body {
-            margin: 0;
-            background: #000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            font-family: 'Press Start 2P', monospace;
-            color: #0f0;
-        }
-        canvas {
-            border: 4px solid #0f0;
-            box-shadow: 0 0 30px #0f0;
-            image-rendering: pixelated;
-        }
-        #ui {
-            position: absolute;
-            top: 20px;
-            width: 800px;
-            display: flex;
-            justify-content: space-between;
-            font-size: 18px;
-            text-shadow: 0 0 10px #0f0;
-        }
+        body { margin:0; background:#000; display:flex; justify-content:center; align-items:center; height:100vh; font-family: 'Press Start 2P', monospace; color:#0f0; }
+        canvas { border:4px solid #0f0; box-shadow:0 0 40px #0f0; image-rendering:pixelated; }
+        #ui { position:absolute; top:15px; width:800px; display:flex; justify-content:space-between; font-size:16px; text-shadow:0 0 8px #0f0; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <div>SCORE: <span id="score">00000</span></div>
-        <div>HIGH: <span id="highscore">00000</span></div>
-        <div>LIVES: <span id="lives">3</span></div>
+        <div>SCORE <span id="score">00000</span></div>
+        <div>HIGH <span id="high">00000</span></div>
+        <div>LIVES <span id="lives">3</span></div>
     </div>
     
     <canvas id="game" width="800" height="600"></canvas>
 
     <script>
-        // === FULL GAME CODE (same as before but improved) ===
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
-        
+
         let score = 0;
-        let highScore = localStorage.getItem('spaceInvadersHighScore') || 0;
+        let highScore = localStorage.getItem('siHighScore') || 0;
         let lives = 3;
         let gameState = 'start';
         let paused = false;
-        
-        const player = { x: 370, y: 530, width: 50, height: 20, speed: 7 };
-        let playerBullets = [];
+
+        const player = { x: 370, y: 520, width: 48, height: 24, speed: 6 };
+        let playerBullet = null;
         let enemyBullets = [];
-        let enemies = [];
-        let enemyDirection = 1;
-        let enemySpeed = 1.8;
-        let lastEnemyShot = 0;
+        let invaders = [];
+        let bunkers = [];
+        let ufo = null;
+
+        let invaderDirection = 1;
+        let invaderSpeed = 1.5;
+        let lastMoveTime = 0;
+        let moveDelay = 600;
+        let frame = 0;
+
         let keys = {};
-        
-        function initEnemies() {
-            enemies = [];
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function playShoot() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'square';
+            osc.frequency.value = 880;
+            gain.gain.value = 0.25;
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+            osc.stop(audioCtx.currentTime + 0.15);
+        }
+
+        function playExplosion() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.value = 120;
+            gain.gain.value = 0.4;
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+            osc.stop(audioCtx.currentTime + 0.6);
+        }
+
+        function initInvaders() {
+            invaders = [];
             for (let row = 0; row < 5; row++) {
-                for (let col = 0; col < 8; col++) {
-                    enemies.push({
-                        x: 80 + col * 70,
-                        y: 60 + row * 50,
-                        width: 40,
-                        height: 30,
+                for (let col = 0; col < 11; col++) {
+                    invaders.push({
+                        x: 70 + col * 55,
+                        y: 70 + row * 45,
+                        width: 36,
+                        height: 28,
                         alive: true,
-                        row: row
+                        row: row,
+                        type: row === 0 ? 'squid' : row < 3 ? 'crab' : 'octopus'
                     });
                 }
             }
         }
-        
-        function updateUI() {
-            document.getElementById('score').textContent = String(score).padStart(5, '0');
-            document.getElementById('highscore').textContent = String(highScore).padStart(5, '0');
-            document.getElementById('lives').textContent = lives;
+
+        function initBunkers() {
+            bunkers = [];
+            [120, 280, 440, 600].forEach(x => {
+                bunkers.push({ x, y: 440, width: 80, height: 50, health: 4 });
+            });
         }
-        
-        function draw() {
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // Stars
-            ctx.fillStyle = '#222';
-            for (let i = 0; i < 60; i++) {
-                const x = (i * 47) % canvas.width;
-                const y = (i * 83) % (canvas.height - 80);
-                ctx.fillRect(x, y, 2, 2);
-            }
-            
-            if (gameState === 'playing' && !paused) {
-                // Player
-                ctx.fillStyle = '#0ff';
-                ctx.fillRect(player.x, player.y, player.width, player.height);
-                ctx.fillRect(player.x + 20, player.y - 10, 10, 12);
-                ctx.fillRect(player.x - 8, player.y + 5, 15, 15);
-                ctx.fillRect(player.x + player.width - 7, player.y + 5, 15, 15);
-                
-                // Enemies
-                enemies.forEach(e => {
-                    if (!e.alive) return;
-                    ctx.fillStyle = e.row < 2 ? '#0f0' : e.row < 4 ? '#0a0' : '#080';
-                    ctx.fillRect(e.x, e.y, e.width, e.height);
-                    ctx.fillStyle = '#000';
-                    ctx.fillRect(e.x + 8, e.y + 8, 6, 6);
-                    ctx.fillRect(e.x + 26, e.y + 8, 6, 6);
-                    ctx.fillStyle = '#0f0';
-                    ctx.fillRect(e.x + 18, e.y - 8, 4, 10);
-                });
-                
-                // Bullets
-                ctx.fillStyle = '#fff';
-                playerBullets.forEach(b => ctx.fillRect(b.x, b.y, 4, 14));
-                ctx.fillStyle = '#f44';
-                enemyBullets.forEach(b => ctx.fillRect(b.x, b.y, 4, 12));
-                
-            } else if (gameState === 'start') {
-                ctx.fillStyle = '#0f0';
-                ctx.font = 'bold 42px "Press Start 2P"';
-                ctx.fillText('SPACE INVADERS', 140, 200);
-                ctx.font = '20px monospace';
-                ctx.fillText('PRESS SPACE TO START', 210, 280);
-                ctx.fillText('ARROWS / A D  •  SPACE TO SHOOT', 150, 340);
-                ctx.fillText('P = PAUSE', 310, 390);
-            } else if (gameState === 'gameover') {
-                ctx.fillStyle = '#f00';
-                ctx.font = 'bold 48px "Press Start 2P"';
-                ctx.fillText('GAME OVER', 200, 220);
-                ctx.fillStyle = '#0f0';
-                ctx.font = '22px monospace';
-                ctx.fillText(`SCORE: ${score}`, 280, 290);
-                ctx.fillText('PRESS R TO RESTART', 210, 360);
-            }
-            
-            if (paused) {
-                ctx.fillStyle = 'rgba(0,0,0,0.7)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#0f0';
-                ctx.font = 'bold 36px "Press Start 2P"';
-                ctx.fillText('PAUSED', 300, 300);
-            }
-        }
-        
-        function update() {
-            if (gameState !== 'playing' || paused) return;
-            
-            // Player movement
-            if (keys['ArrowLeft'] || keys['a'] || keys['A']) player.x -= player.speed;
-            if (keys['ArrowRight'] || keys['d'] || keys['D']) player.x += player.speed;
-            player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
-            
-            // Bullets
-            // (player shooting + collision logic same as before — I kept it clean)
-            // ... [full logic continues exactly like the previous version but cleaned up]
-            
-            // For brevity in this message, the full working code is identical to what I gave you earlier
-            // but with high score + pause added. I'll give you the complete polished file.
-        }
-        
-        // === KEYBOARD + GAME LOOP (same structure as before) ===
-        // I will provide the COMPLETE polished index.html in the next message if you want,
-        // or you can use the one from our previous chat and just add high score + pause.
-        
-        function gameLoop() {
-            update();
-            draw();
-            requestAnimationFrame(gameLoop);
-        }
-        
-        function startGame() {
-            initEnemies();
-            updateUI();
-            gameLoop();
-        }
-        
-        // Keyboard handlers (full version)
-        document.addEventListener('keydown', e => {
-            keys[e.key] = true;
-            
-            if (gameState === 'start' && e.key === ' ') {
-                e.preventDefault();
-                gameState = 'playing';
-            }
-            
-            if (gameState === 'playing' && e.key.toLowerCase() === 'p') {
-                paused = !paused;
-            }
-            
-            if (gameState === 'playing' && e.key === ' ') {
-                e.preventDefault();
-                // shoot function here
-            }
-            
-            if (gameState === 'gameover' && e.key.toLowerCase() === 'r') {
-                // reset game
-            }
-        });
-        
-        document.addEventListener('keyup', e => keys[e.key] = false);
-        
-        // Boot
-        startGame();
-    </script>
-</body>
-</html>
+
+        function updateInvaders() {
+            const now = Date.now();
+            if (now - lastMoveTime < moveDelay) return;
+
+            const aliveInvaders = invaders.filter(i => i.alive);
+            if (aliveInvaders.length === 0) {
+                initInvaders();
+                invaderSpeed = Math.min(5, invaderSpeed + 0.5);
+                moveDelay = Math.max(80, moveDelay
