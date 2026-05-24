@@ -3,21 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SPACE INVADERS</title>
+    <title>SPACE INVADERS • 1978</title>
     <style>
-        body { 
-            margin: 0; 
-            background: #000; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            height: 100vh; 
-            font-family: monospace;
-        }
-        canvas { 
-            border: 4px solid #0f0; 
-            box-shadow: 0 0 40px #0f0; 
-        }
+        body { margin:0; background:#000; display:flex; justify-content:center; align-items:center; height:100vh; }
+        canvas { border:4px solid #0f0; box-shadow:0 0 50px #0f0; image-rendering: pixelated; }
     </style>
 </head>
 <body>
@@ -31,23 +20,94 @@
         let score = 0;
         let lives = 3;
 
-        const player = { x: 370, y: 520, width: 50, height: 20 };
+        const player = { x: 370, y: 520, width: 48, height: 22 };
         let invaders = [];
         let bullets = [];
+        let bunkers = [];
+        let ufo = null;
+
         let lastMove = 0;
         let dir = 1;
+        let frame = 0;
 
         function initInvaders() {
             invaders = [];
             for (let r = 0; r < 5; r++) {
                 for (let c = 0; c < 11; c++) {
                     invaders.push({
-                        x: 80 + c * 55,
-                        y: 80 + r * 45,
-                        alive: true
+                        x: 75 + c * 55,
+                        y: 75 + r * 42,
+                        alive: true,
+                        row: r,
+                        type: r === 0 ? 'squid' : r < 3 ? 'crab' : 'octopus'
                     });
                 }
             }
+        }
+
+        function initBunkers() {
+            bunkers = [];
+            [130, 290, 450, 610].forEach(x => {
+                bunkers.push({ x, y: 435, width: 70, height: 45, health: 4 });
+            });
+        }
+
+        function drawInvader(inv) {
+            if (!inv.alive) return;
+
+            ctx.fillStyle = '#0f0';
+            const f = frame;
+            const x = inv.x;
+            const y = inv.y;
+
+            if (inv.type === 'squid') {
+                // Top row - Squid
+                ctx.fillRect(x + 6, y + 2, 24, 22);
+                ctx.fillRect(x + 2, y + 10, 32, 8);
+                if (f === 0) {
+                    ctx.fillRect(x, y + 18, 8, 10);
+                    ctx.fillRect(x + 28, y + 18, 8, 10);
+                } else {
+                    ctx.fillRect(x + 4, y + 18, 8, 10);
+                    ctx.fillRect(x + 24, y + 18, 8, 10);
+                }
+            } 
+            else if (inv.type === 'crab') {
+                // Middle - Crab
+                ctx.fillRect(x + 4, y + 4, 28, 18);
+                ctx.fillRect(x, y + 8, 36, 10);
+                if (f === 0) {
+                    ctx.fillRect(x - 2, y + 18, 10, 8);
+                    ctx.fillRect(x + 28, y + 18, 10, 8);
+                } else {
+                    ctx.fillRect(x + 4, y + 18, 10, 8);
+                    ctx.fillRect(x + 22, y + 18, 10, 8);
+                }
+            } 
+            else {
+                // Bottom - Octopus
+                ctx.fillRect(x + 2, y + 2, 32, 20);
+                ctx.fillRect(x - 2, y + 8, 40, 8);
+                if (f === 0) {
+                    ctx.fillRect(x + 4, y + 20, 10, 8);
+                    ctx.fillRect(x + 22, y + 20, 10, 8);
+                } else {
+                    ctx.fillRect(x, y + 20, 10, 8);
+                    ctx.fillRect(x + 26, y + 20, 10, 8);
+                }
+            }
+        }
+
+        function drawPlayer() {
+            ctx.fillStyle = '#0ff';
+            // Main body
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            // Cannon
+            ctx.fillRect(player.x + 18, player.y - 10, 12, 12);
+            // Left wing
+            ctx.fillRect(player.x - 6, player.y + 4, 12, 14);
+            // Right wing
+            ctx.fillRect(player.x + player.width - 6, player.y + 4, 12, 14);
         }
 
         function draw() {
@@ -56,47 +116,40 @@
 
             // Stars
             ctx.fillStyle = '#222';
-            for (let i = 0; i < 50; i++) {
-                ctx.fillRect((i * 31) % 800, (i * 47) % 500, 2, 2);
+            for (let i = 0; i < 60; i++) {
+                ctx.fillRect((i * 33) % 800, (i * 51) % 480, 2, 2);
             }
 
             if (gameState === 'start') {
                 ctx.fillStyle = '#0f0';
-                ctx.font = 'bold 42px monospace';
-                ctx.fillText('SPACE INVADERS', 200, 220);
-                ctx.font = '20px monospace';
-                ctx.fillText('Press SPACE to start', 240, 300);
-                ctx.fillText('Arrow keys / A D to move', 200, 360);
-                ctx.fillText('Space to shoot', 280, 400);
+                ctx.font = 'bold 44px monospace';
+                ctx.fillText('SPACE INVADERS', 185, 200);
+                ctx.font = '18px monospace';
+                ctx.fillText('Press SPACE to start', 250, 280);
+                ctx.fillText('← →  Move    SPACE  Shoot', 210, 340);
             } 
             else if (gameState === 'playing') {
-                // Player
-                ctx.fillStyle = '#0ff';
-                ctx.fillRect(player.x, player.y, player.width, player.height);
-                ctx.fillRect(player.x + 20, player.y - 10, 10, 12);
-
-                // Invaders
-                ctx.fillStyle = '#0f0';
-                invaders.forEach(inv => {
-                    if (inv.alive) {
-                        ctx.fillRect(inv.x, inv.y, 36, 28);
-                        // Simple eyes
-                        ctx.fillStyle = '#000';
-                        ctx.fillRect(inv.x + 8, inv.y + 8, 6, 6);
-                        ctx.fillRect(inv.x + 22, inv.y + 8, 6, 6);
-                        ctx.fillStyle = '#0f0';
-                    }
+                // Draw bunkers
+                ctx.fillStyle = '#0a0';
+                bunkers.forEach(b => {
+                    if (b.health > 0) ctx.fillRect(b.x, b.y, b.width, b.height);
                 });
 
-                // Bullets
-                ctx.fillStyle = '#fff';
-                bullets.forEach(b => ctx.fillRect(b.x, b.y, 4, 12));
+                // Draw invaders
+                invaders.forEach(drawInvader);
 
-                // UI
+                // Draw player
+                drawPlayer();
+
+                // Draw bullets
+                ctx.fillStyle = '#fff';
+                bullets.forEach(b => ctx.fillRect(b.x, b.y, 4, 13));
+
+                // Score & Lives
                 ctx.fillStyle = '#0f0';
-                ctx.font = '18px monospace';
-                ctx.fillText('SCORE: ' + score.toString().padStart(5, '0'), 40, 40);
-                ctx.fillText('LIVES: ' + lives, 650, 40);
+                ctx.font = 'bold 18px monospace';
+                ctx.fillText('SCORE ' + score.toString().padStart(5, '0'), 40, 35);
+                ctx.fillText('LIVES ' + lives, 650, 35);
             }
         }
 
@@ -105,28 +158,26 @@
 
             // Move invaders
             const now = Date.now();
-            if (now - lastMove > 350) {
+            if (now - lastMove > 320) {
                 let hitWall = false;
-                
                 invaders.forEach(inv => {
                     if (inv.alive) {
-                        inv.x += dir * 10;
-                        if (inv.x < 20 || inv.x > 740) hitWall = true;
+                        inv.x += dir * 9;
+                        if (inv.x < 15 || inv.x > 745) hitWall = true;
                     }
                 });
 
                 if (hitWall) {
                     dir *= -1;
-                    invaders.forEach(inv => {
-                        if (inv.alive) inv.y += 22;
-                    });
+                    invaders.forEach(inv => { if (inv.alive) inv.y += 20; });
                 }
                 lastMove = now;
+                frame = 1 - frame;
             }
 
             // Move bullets
             for (let i = bullets.length - 1; i >= 0; i--) {
-                bullets[i].y -= 14;
+                bullets[i].y -= 13;
                 if (bullets[i].y < 0) bullets.splice(i, 1);
             }
 
@@ -137,11 +188,10 @@
 
                 for (let j = bullets.length - 1; j >= 0; j--) {
                     const b = bullets[j];
-                    if (b.x > inv.x && b.x < inv.x + 36 && 
-                        b.y > inv.y && b.y < inv.y + 28) {
+                    if (b.x > inv.x && b.x < inv.x + 36 && b.y > inv.y && b.y < inv.y + 28) {
                         inv.alive = false;
                         bullets.splice(j, 1);
-                        score += 10;
+                        score += (inv.row === 0 ? 30 : inv.row < 3 ? 20 : 10);
                         break;
                     }
                 }
@@ -155,39 +205,34 @@
         }
 
         function shoot() {
-            bullets.push({ x: player.x + 23, y: player.y - 5 });
+            bullets.push({ x: player.x + 22, y: player.y - 5 });
         }
 
-        // Controls
         document.addEventListener('keydown', e => {
             if (e.key === ' ' || e.code === 'Space') {
                 e.preventDefault();
-                
                 if (gameState === 'start') {
                     gameState = 'playing';
                     initInvaders();
+                    initBunkers();
                     lastMove = Date.now();
                 } else if (gameState === 'playing') {
                     shoot();
                 }
             }
 
-            if ((e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') && gameState === 'playing') {
-                player.x -= 18;
+            if (gameState === 'playing') {
+                if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') player.x -= 16;
+                if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') player.x += 16;
+                player.x = Math.max(0, Math.min(752, player.x));
             }
-            if ((e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') && gameState === 'playing') {
-                player.x += 18;
-            }
-            
-            player.x = Math.max(0, Math.min(750, player.x));
         });
 
         // Boot
         initInvaders();
+        initBunkers();
         draw();
         gameLoop();
-
-        console.log('%c[Space Invaders] Game loaded successfully', 'color:#0f0');
     </script>
 </body>
 </html>
